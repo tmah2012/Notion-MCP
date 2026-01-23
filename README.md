@@ -94,6 +94,30 @@ Based on your current setup, you have the **Notion MCP** integration active and 
 }
 ```
 
+**Example - Create Call Recording with Transcript:**
+```javascript
+{
+  "parent": {
+    "data_source_id": "your-call-recordings-database-id"
+  },
+  "pages": [
+    {
+      "properties": {
+        "Recording Title": "Discovery Call - Acme Corp Partnership",
+        "date:Date:start": "2025-01-22T14:30:00",
+        "date:Date:is_datetime": 1,
+        "Duration (minutes)": 45,
+        "Recording URL": "https://zoom.us/rec/share/abc123xyz",
+        "Transcription Status": "Complete",
+        "Sentiment": "Very Positive",
+        "Key Topics": ["Technical Requirements", "Timeline", "Pricing", "Next Steps"]
+      },
+      "content": "# AI Summary\n\nPositive discovery call with Sarah Johnson (VP Partnerships) and Mike Chen (CTO) from Acme Corp. They're looking to integrate our analytics platform into their product suite.\n\n## Key Points Discussed\n- **Timeline**: Want to launch by Q2 2025\n- **Technical Requirements**: REST API, OAuth 2.0 authentication, webhooks for real-time updates\n- **Budget**: $50-75K range, flexible based on features\n- **Decision Process**: Technical review (2 weeks) → Business case (1 week) → Legal (1 week)\n\n## Transcript\n[00:00] Sarah: Thanks for taking the time today...\n[02:15] Mike: Our biggest challenge is getting real-time analytics...\n[15:30] Discussion about API rate limits and data freshness...\n[28:45] Pricing discussion - they're comfortable with our enterprise tier...\n[42:00] Next steps: Send technical documentation and API sandbox access\n\n## Action Items\n- [ ] Send API documentation to Mike by Friday\n- [ ] Set up sandbox environment access\n- [ ] Schedule technical deep-dive for next Tuesday\n- [ ] Prepare custom pricing proposal for 75K tier"
+    }
+  ]
+}
+```
+
 #### 3. `notion-update-page`
 **Purpose:** Modify existing records
 
@@ -450,6 +474,88 @@ Based on your current setup, you have the **Notion MCP** integration active and 
 }
 ```
 
+### Call Recordings Database Schema
+
+```javascript
+{
+  "properties": {
+    "Recording Title": {"type": "title"},
+    "Date": {"type": "date"},
+    "Duration (minutes)": {"type": "number"},
+    "Recording URL": {"type": "url"},
+    "Transcript": {"type": "rich_text"},
+    "AI Summary": {"type": "rich_text"},
+    "Company": {
+      "type": "relation",
+      "relation": {
+        "data_source_id": "{companies-db-id}",
+        "type": "single_property"
+      }
+    },
+    "Contacts": {
+      "type": "relation",
+      "relation": {
+        "data_source_id": "{contacts-db-id}",
+        "type": "dual_property"
+      }
+    },
+    "Related Deal": {
+      "type": "relation",
+      "relation": {
+        "data_source_id": "{deals-db-id}",
+        "type": "single_property"
+      }
+    },
+    "Related Activity": {
+      "type": "relation",
+      "relation": {
+        "data_source_id": "{activities-db-id}",
+        "type": "single_property"
+      }
+    },
+    "Key Topics": {
+      "type": "multi_select",
+      "multi_select": {
+        "options": [
+          {"name": "Pricing", "color": "green"},
+          {"name": "Technical Requirements", "color": "blue"},
+          {"name": "Timeline", "color": "purple"},
+          {"name": "Integration", "color": "orange"},
+          {"name": "Decision Process", "color": "yellow"},
+          {"name": "Objections", "color": "red"},
+          {"name": "Next Steps", "color": "pink"}
+        ]
+      }
+    },
+    "Sentiment": {
+      "type": "select",
+      "select": {
+        "options": [
+          {"name": "Very Positive", "color": "green"},
+          {"name": "Positive", "color": "blue"},
+          {"name": "Neutral", "color": "gray"},
+          {"name": "Negative", "color": "red"},
+          {"name": "Very Negative", "color": "pink"}
+        ]
+      }
+    },
+    "Action Items Identified": {"type": "rich_text"},
+    "Transcription Status": {
+      "type": "select",
+      "select": {
+        "options": [
+          {"name": "Pending", "color": "gray"},
+          {"name": "Processing", "color": "yellow"},
+          {"name": "Complete", "color": "green"},
+          {"name": "Failed", "color": "red"}
+        ]
+      }
+    },
+    "Created Date": {"type": "created_time"}
+  }
+}
+```
+
 ## 🚀 Natural Language to Notion MCP Translation
 
 ### How Claude Processes Your Requests
@@ -524,10 +630,10 @@ Can you add all of these with a tag 'Conference 2025'?"
 
 Claude will loop through and create each contact with the specified tag.
 
-### Pattern 2: Transcript Processing
+### Pattern 2: Call Recording Transcript Processing
 
 ```
-"Here's the transcript from my call with Acme Corp:
+"Here's the transcript from my call with Acme Corp (45 minutes, Zoom recording link: https://zoom.us/rec/share/abc123):
 
 [00:00] Sarah: Thanks for taking the time today...
 [02:15] Me: So what are your main pain points with...
@@ -535,15 +641,31 @@ Claude will loop through and create each contact with the specified tag.
 [12:45] Mike (CTO): From a technical perspective...
 [25:00] Sarah: Let's schedule a follow-up for next week...
 
-Extract the key points and update the CRM."
+Process this call recording and update the CRM."
 ```
 
-Claude extracts:
-- Participants (Sarah, Mike - CTO)
-- Key challenges discussed
-- Technical requirements
-- Next steps and dates
-- Overall sentiment
+Claude will:
+1. Create a **Call Recording entry** with:
+   - Full transcript stored
+   - AI-generated summary of key points
+   - Sentiment analysis
+   - Duration and recording link
+   - Key topics tagged (Pricing, Technical Requirements, Timeline, etc.)
+
+2. Extract and update:
+   - **Participants**: Sarah (VP Partnerships), Mike (CTO)
+   - **Key challenges** discussed
+   - **Technical requirements** mentioned
+   - **Next steps** and follow-up dates
+   - **Overall sentiment** (Positive, Neutral, Negative)
+
+3. Link the recording to:
+   - Company (Acme Corp)
+   - Contacts (Sarah, Mike)
+   - Related Deal (if exists)
+   - Activity log entry
+
+4. Extract **action items** for follow-up tracking
 
 ### Pattern 3: Deal Pipeline Analysis
 
@@ -743,14 +865,27 @@ Activities can relate to:
 - Contacts (who participated)
 - Deals (which opportunity was discussed)
 
+### Call Recordings → Everything Relations
+
+Call Recordings can relate to:
+- Companies (which company was on the call)
+- Contacts (who participated in the call)
+- Deals (which opportunity was discussed)
+- Activities (links to the activity log entry for the call)
+
+This creates a comprehensive record where you can:
+- View all call recordings for a specific company or contact
+- See the full transcript and AI summary from any deal page
+- Track conversation history with full context
+
 ## 🎬 Quick Start Workflow
 
 ### Day 1: Initial Setup
 
 ```bash
 # In Claude Code
-> "Help me set up my shadow CRM in Notion. I need databases for 
-   Contacts, Companies, Deals, and Activities."
+> "Help me set up my shadow CRM in Notion. I need databases for
+   Contacts, Companies, Deals, Activities, and Call Recordings."
 
 # Claude will guide you through creating each database with proper schema
 ```
@@ -781,6 +916,19 @@ Activities can relate to:
 > "Generate my outreach queue for next week"
 
 # Claude becomes your CRM analyst
+```
+
+### Week 3: Call Recording Processing
+
+```bash
+> "Here's the transcript from my call with [Company].
+   Recording link: [URL]. Process this and update the CRM."
+
+# Claude will:
+# - Create a Call Recording entry with full transcript
+# - Generate AI summary and extract action items
+# - Link to relevant contacts, company, and deals
+# - Update activity logs and follow-up dates
 ```
 
 ## 📱 Mobile Usage Tips

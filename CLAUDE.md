@@ -6,7 +6,7 @@ This is a **documentation repository** for setting up and using a Shadow CRM sys
 
 ### Purpose
 - Guide users through Notion MCP setup for Shadow CRM
-- Document database schemas for Contacts, Companies, Deals, and Activities
+- Document database schemas for Contacts, Companies, Deals, Activities, and Call Recordings
 - Provide real-world examples of Notion MCP tool usage
 - Enable natural language CRM interactions through Claude
 
@@ -26,23 +26,23 @@ Notion-MCP/
 
 ### File Descriptions
 
-#### README.md (823 lines)
+#### README.md (969 lines)
 The main documentation file containing:
 - Technical setup prerequisites
 - Notion MCP tool documentation (`notion-search`, `notion-create-pages`, `notion-update-page`, etc.)
-- Complete database schemas for CRM entities
+- Complete database schemas for CRM entities (including Call Recordings)
 - Natural language processing patterns
-- Advanced usage patterns (batch imports, transcript processing, pipeline analysis)
+- Advanced usage patterns (batch imports, call recording transcript processing, pipeline analysis)
 - Database formulas and views
 - Quick start workflows
 
 **Key Sections:**
 - Lines 1-14: Technical setup and prerequisites
-- Lines 16-220: Notion MCP tool examples
-- Lines 222-451: Complete database schemas
-- Lines 453-510: Natural language to MCP translation
-- Lines 512-573: Advanced patterns
-- Lines 575-822: Deal timelines, queries, formulas, and workflows
+- Lines 16-180: Notion MCP tool examples (including Call Recordings)
+- Lines 222-535: Complete database schemas (Contacts, Companies, Deals, Activities, Call Recordings)
+- Lines 560-660: Natural language to MCP translation
+- Lines 617-710: Advanced patterns (including call recording processing)
+- Lines 712-969: Deal timelines, queries, formulas, workflows, and relations
 
 ## Key Concepts
 
@@ -59,6 +59,7 @@ A personal, flexible CRM system built in Notion that:
 - Tracks relationships (Contacts, Companies)
 - Manages opportunities (Deals)
 - Logs interactions (Activities)
+- Stores call recordings with transcripts and AI summaries (Call Recordings)
 - Provides relationship intelligence through Claude
 
 ### 3. Database Relations
@@ -66,7 +67,7 @@ The CRM uses interconnected Notion databases:
 ```
 Companies ←→ Contacts
     ↓           ↓
-  Deals ←→ Activities
+  Deals ←→ Activities ←→ Call Recordings
 ```
 
 ### 4. Natural Language Processing
@@ -210,7 +211,7 @@ https://claude.ai/code/session_<id>"
 
 ```bash
 # 1. Find the Advanced Patterns section
-Read README.md (lines 511-573)
+Read README.md (lines 617-710)
 
 # 2. Add new pattern with:
 - Clear descriptive heading
@@ -226,7 +227,7 @@ Read README.md (lines 511-573)
 
 ```bash
 # 1. Locate the tool section
-Read README.md (lines 16-220)
+Read README.md (lines 16-180)
 
 # 2. Update example:
 - Keep JSON structure valid
@@ -251,6 +252,28 @@ README.md:222-268 contains the Contacts database schema
 - Common pitfalls to avoid
 
 # 3. Offer to help with next steps
+```
+
+#### Task 5: Helping with Call Recording Processing
+
+```bash
+# User: "How do I process call transcripts in my CRM?"
+
+# 1. Reference the Call Recordings database schema
+README.md:453-535 contains the Call Recordings database schema
+
+# 2. Point to the advanced pattern
+README.md:633-670 shows Pattern 2: Call Recording Transcript Processing
+
+# 3. Explain the workflow:
+- User provides transcript and recording link
+- Claude creates Call Recording entry with full transcript
+- AI generates summary and extracts action items
+- Links to relevant contacts, companies, and deals
+- Updates activity logs
+
+# 4. Show example from tool section
+README.md:97-152 has complete Call Recording creation example
 ```
 
 ## Notion MCP Tool Reference
@@ -476,7 +499,10 @@ Grep pattern:"Contacts database" output_mode:content
 → Read the example, verify JSON structure, fix or clarify, commit update
 
 #### "Explain how Claude processes CRM requests"
-→ Reference README.md:453-510 (Natural Language to Notion MCP Translation)
+→ Reference README.md:560-660 (Natural Language to Notion MCP Translation)
+
+#### "How do I process call recordings and transcripts?"
+→ Reference Call Recordings database schema (README.md:453-535) and Pattern 2: Call Recording Transcript Processing (README.md:633-670)
 
 ## Success Metrics
 
