@@ -1,137 +1,749 @@
 ---
 name: notion-crm-skill
-description: Shadow CRM for Tim Mahoney. Triggers on: (1) @CRM prefix, (2) call transcripts mentioning Fiserv Partners, (3) "process the email about..." or email subject references, (4) task/reminder requests. Manages deals, contacts, companies, activities, emails, and internal tasks via Notion MCP.
+description: Use when working with the Notion MCP server to update the Shadow CRM. Triggered by @CRM prefix or when user uploads call transcripts/summaries involving Fiserv Partners and deals. Handles individual deal updates, contact management, and activity logging for Tim Mahoney's CRM.
 ---
+
 
 # Shadow CRM for Tim Mahoney
 
 ## User Identity
-- **Name**: Tim Mahoney
-- **Role**: SVP of Relationship Management at Savana Inc.
-- "Tim" or "TM" in transcripts = Tim Mahoney (the user). Other Tims will use full names.
+- **User Name**: Tim Mahoney
+- When you see "Tim" or "TM" in transcripts, notes, or conversations, this refers to Tim Mahoney (the user)
+- If there's another person named Tim being discussed, their full name will be provided to distinguish them
+- Always attribute actions, calls, and activities to Tim Mahoney when using first-person references or abbreviated names
 
-## Database IDs
+## Call Transcript Processing
+When processing call transcripts or summaries that contain information about multiple Fiserv Partners and different deals:
 
-| Database | Data Source ID |
-|----------|---------------|
-| Deals | `2f15021c-9761-8029-9dba-000b98ad45e1` |
-| Contacts | `2f15021c-9761-80db-8a54-000b77e0999d` |
-| Companies | `374f4c7a-5e1f-422c-82ae-d055412777c1` |
-| Activities | `4e345cdb-0b0a-46b2-b44c-126690de0709` |
-| Emails | `2ee5021c-9761-806b-bb06-000bdbdfc420` |
-| Internal Tasks | `70e9c1c7-4ae7-44f8-a359-930e4be1fe13` |
-| Shadow CRM (Parent) | `2ee5021c-9761-804d-b783-e62c4b5a5b86` |
+1. **Parse Each Deal Separately**: Extract information for each distinct deal or partner mentioned
+2. **Individual Updates**: Update each deal record individually with its specific details from the call
+3. **Cross-Reference**: Identify which partners, contacts, and deals were discussed
+4. **Activity Logging**: Create separate activity entries for each significant deal or partner interaction
+5. **Relationship Mapping**: Update contact records for all participants mentioned
 
----
+### Transcript Processing Workflow
+When a transcript or summary is uploaded:
+1. Search for existing records for each partner/company mentioned
+2. Identify all deals discussed in the call
+3. For each deal:
+   - Update deal properties (stage, status, next steps, etc.)
+   - Add timeline notes to the deal page
+   - Log activity associated with that specific deal
+4. Update contact records for all participants
+5. Create cross-references between related entities
 
-## Email Domain Classification
+### Transcript Retrieval Pattern (Notion Meeting Recordings)
 
-**CRITICAL**: Classify senders by domain:
+When Tim asks for information, quotes, or direct language from a call transcript stored in Notion:
 
-| Domain | Classification | Task Source |
-|--------|---------------|-------------|
-| `@savanainc.com` | Internal (Savana) | `Email - Internal` |
-| `@fiserv.com`, `@finxact.com` | Partner | `Email - Partner` |
-| All other domains | Customer/Prospect | `Email - Customer/Prospect` |
-
----
-
-## Task Defaults
-
-| Property | Default |
-|----------|---------|
-| Priority | Medium |
-| Status | To Do |
-| Due Date | **EOB Friday 5pm EST** of current week |
-
-**Due Date Overrides**:
-- "EOD" / "end of day" → Same day 5pm EST
-- "EOM" / "end of month" → Last business day 5pm EST
-- Specific date → That date 5pm EST
-
----
-
-## Email-to-Task Workflow
-
-When Tim references an email (e.g., "Process the email about [subject]"):
-
-### 1. Find & Fetch Email
+**Step 1: Fetch with transcript included**
+Always use `notion-fetch` with `include_transcript: true` on the meeting notes page:
 ```
-notion-search({ "data_source_url": "collection://2ee5021c-9761-806b-bb06-000bdbdfc420", "query": "<subject>" })
-notion-fetch({ "id": "<email-page-url>" })
+notion-fetch({
+  id: "meeting-page-url-or-id",
+  include_transcript: true
+})
 ```
+Without `include_transcript: true`, the transcript is omitted and you only get the AI-generated summary + footnote references. The summary paraphrases -- it loses exact wording. Always fetch the full transcript when quotes or direct language are needed.
 
-### 2. Analyze & Classify
-- Classify sender by domain (see table above)
-- Extract people mentioned → potential Contacts
-- Extract organizations → potential Companies
-- Identify action items → Tasks
-- Determine if relates to existing Deal or new opportunity
+**Step 2: Check transcript size**
+- **If transcript <= 80K characters** -> Work directly from the `<transcript>` block in the fetched content. Pull quotes, summarize, answer questions -- all from one fetch call.
+- **If transcript > 80K characters** -> Chain to the **transcription-engine** skill. The transcript will need to be exported and compressed before processing. Follow the transcription-engine workflow (export from Notion -> run `clean_transcript.py` -> work from cleaned output).
 
-### 3. Create/Update Records
-For each entity type, create if new or update if exists:
+**Step 3: Use transcript text for quotes, summary for context**
+- The `<summary>` section provides structured context (topics covered, action items, key themes) -- useful for orientation.
+- The `<transcript>` section contains verbatim dialogue -- **always use this for direct quotes, exact language, and attribution to specific speakers.**
+- Footnote references (`[^{{page_id}}]`) in the summary link to individual transcript blocks. These can be fetched individually as a fallback, but this is slow (one API call per quote). Always prefer the full transcript approach above.
 
-**Company** → data_source_id: `374f4c7a-5e1f-422c-82ae-d055412777c1`
-- Properties: Name, Industry, Website, Notes
+**Key transcription corrections** (also in transcription-engine):
+| Wrong | Correct |
+|-------|---------|
+| Savannah | Savana |
+| Pfizer, PyServe | Fiserv |
+| FinZag, FinZact, FinSec, FinSac | Finxact |
+| Enteract | Interact |
+| ICPS | ICBS |
 
-**Contact** → data_source_id: `2f15021c-9761-80db-8a54-000b77e0999d`
-- Properties: Name, Email, Role, Company, Phone, Status, Tags, Notes
+Apply these corrections when pulling quotes -- the raw transcript will contain the misspellings from auto-transcription.
 
-**Deal** → data_source_id: `2f15021c-9761-8029-9dba-000b98ad45e1`
-- Properties: Deal Name, Status, Amount, Close Date, Company (relation), Contacts (relation), Emails (relation), Notes
-- Add Deal Timeline in page content
+Notion MCP Setup Guide for Shadow CRM
+## Technical Setup
+### Prerequisites
+1. **Notion Account** with workspace access
+2. **Claude Code** installed and configured
+3. **Notion MCP Connection** enabled in Claude Code
 
-**Task** → data_source_id: `70e9c1c7-4ae7-44f8-a359-930e4be1fe13`
-- Properties: Task, Notes, Source, Status, Priority, Due Date (datetime), Requested Date (datetime), Requested By, Related Email (relation), Related Deal (relation), Related Contact (relation)
+### Notion MCP Connection Status
+Based on your current setup, you have the **Notion MCP** integration active and connected. This gives Claude access to powerful tools for interacting with your Notion workspace.
 
-### 4. Link Email to Related Records
-Update the email with relations to Company, Contact, and Deal.
+## Available Notion MCP Tools
+### Core Tools You'll Use Daily
+#### 1. `notion-search`
+**Purpose:** Find anything in your Notion workspace using natural language
 
-### Task Creation Example
-```json
+**Example Usage:**
+```javascript
+// Search for a specific contact
 {
-  "parent": { "data_source_id": "70e9c1c7-4ae7-44f8-a359-930e4be1fe13" },
-  "pages": [{
-    "properties": {
-      "Task": "Create Thread Bank Deal Brief",
-      "Notes": "Create deal brief from executive summary document",
-      "Source": "Email - Internal",
-      "Status": "To Do",
-      "Priority": "Medium",
-      "Requested By": "Kelly Carthy (SVP, Sales)",
-      "Related Email": "[\"https://www.notion.so/<email-page-id>\"]",
-      "Related Deal": "[\"https://www.notion.so/<deal-page-id>\"]",
-      "date:Due Date:start": "2026-01-31T22:00:00.000Z",
-      "date:Due Date:is_datetime": 1,
-      "date:Requested Date:start": "2026-01-29T19:59:00.000Z",
-      "date:Requested Date:is_datetime": 1
+  "query": "Sarah Johnson Acme Corp",
+  "query_type": "internal"
+}
+
+// Find all deals in negotiation stage
+{
+  "query": "deals in negotiation stage",
+  "query_type": "internal",
+  "filters": {
+    "created_date_range": {
+      "start_date": "2024-01-01"
     }
-  }]
+  }
+}
+
+// Search within a specific database
+{
+  "query": "healthcare companies",
+  "data_source_url": "collection://your-companies-database-id"
 }
 ```
 
----
+#### 2. `notion-create-pages`
+**Purpose:** Add new records to your CRM databases
 
-## Call Transcript Processing
+**Example - Create New Contact:**
+```javascript
+{
+  "parent": {
+    "data_source_id": "your-contacts-database-id"
+  },
+  "pages": [
+    {
+      "properties": {
+        "Name": "Sarah Johnson",
+        "Email": "sarah.j@acmecorp.com",
+        "Title/Role": "VP of Partnerships",
+        "Relationship Strength": "Warm",
+        "date:Last Contact Date:start": "2025-01-22",
+        "date:Last Contact Date:is_datetime": 0
+      },
+      "content": "Met at SaaS Summit 2025. Very engaged in our analytics platform. Follow up with demo next week."
+    }
+  ]
+}
+```
 
-When processing call transcripts with multiple partners/deals:
+**Example - Create New Deal:**
+```javascript
+{
+  "parent": {
+    "data_source_id": "your-deals-database-id"
+  },
+  "pages": [
+    {
+      "properties": {
+        "Deal Name": "Acme Corp - API Integration Partnership",
+        "Deal Type": "Integration",
+        "Stage": "Discovery",
+        "Value": 50000,
+        "Probability": "25%",
+        "Status": "On Track",
+        "date:Expected Close Date:start": "2025-03-31",
+        "date:Expected Close Date:is_datetime": 0
+      },
+      "content": "# Overview\nAPI integration partnership to embed our analytics into Acme's platform.\n\n# Key Points\n- Timeline: Q1 2025\n- Technical requirements: REST API, OAuth 2.0\n- Decision makers: Sarah Johnson (Partnerships), Mike Chen (Engineering)"
+    }
+  ]
+}
+```
 
-1. **Parse each deal separately** - Extract info for each distinct deal/partner
-2. **Search existing records** - Find each partner, company, deal, contact mentioned
-3. **Update each deal individually**:
-   - Update deal properties (stage, status, next steps)
-   - Add timeline entry to deal page content
-   - Log activity for that specific deal
-4. **Update contact records** - Last contact date, notes for all participants
-5. **Create cross-references** - Link related entities together
+#### 3. `notion-update-page`
+**Purpose:** Modify existing records
 
----
+**Example - Update Deal Stage:**
+```javascript
+{
+  "page_id": "deal-page-id",
+  "command": "update_properties",
+  "properties": {
+    "Stage": "Proposal",
+    "Status": "On Track",
+    "date:Last Activity:start": "2025-01-22",
+    "date:Last Activity:is_datetime": 1
+  }
+}
+```
 
-## Deal Timeline Format
+**Example - Add Notes to Contact:**
+```javascript
+{
+  "page_id": "contact-page-id",
+  "command": "insert_content_after",
+  "selection_with_ellipsis": "# Recent Conversations...",
+  "new_str": "\n## Call - January 22, 2025\n- Discussed Q1 partnership priorities\n- Acme is evaluating 3 vendors\n- Decision timeline: End of February\n- Action: Send ROI analysis by Friday"
+}
+```
 
-Maintain in deal page content:
+#### 4. `notion-fetch`
+**Purpose:** Retrieve complete details of a page or database
 
-```markdown
+**Example - Get Full Contact Details:**
+```javascript
+{
+  "id": "https://notion.so/workspace/Contact-Name-abc123"
+}
+```
+
+**Example - Get Database Schema:**
+```javascript
+{
+  "id": "https://notion.so/workspace/Deals-Database-xyz789"
+}
+```
+
+#### 5. `notion-create-database`
+**Purpose:** Programmatically create new databases
+
+**Example - Create Contacts Database:**
+```javascript
+{
+  "parent": {
+    "page_id": "your-shadow-crm-page-id"
+  },
+  "title": [
+    {
+      "type": "text",
+      "text": {
+        "content": "Contacts"
+      }
+    }
+  ],
+  "properties": {
+    "Name": {
+      "type": "title",
+      "title": {}
+    },
+    "Company": {
+      "type": "relation",
+      "relation": {
+        "data_source_id": "companies-database-id",
+        "type": "single_property",
+        "single_property": {}
+      }
+    },
+    "Email": {
+      "type": "email",
+      "email": {}
+    },
+    "Phone": {
+      "type": "phone_number",
+      "phone_number": {}
+    },
+    "Title/Role": {
+      "type": "rich_text",
+      "rich_text": {}
+    },
+    "LinkedIn": {
+      "type": "url",
+      "url": {}
+    },
+    "Relationship Strength": {
+      "type": "select",
+      "select": {
+        "options": [
+          {"name": "Cold", "color": "gray"},
+          {"name": "Warm", "color": "yellow"},
+          {"name": "Strong", "color": "green"},
+          {"name": "Champion", "color": "blue"}
+        ]
+      }
+    },
+    "Last Contact Date": {
+      "type": "date",
+      "date": {}
+    },
+    "Next Follow-up": {
+      "type": "date",
+      "date": {}
+    },
+    "Tags": {
+      "type": "multi_select",
+      "multi_select": {
+        "options": [
+          {"name": "Decision Maker", "color": "purple"},
+          {"name": "Technical", "color": "blue"},
+          {"name": "Executive", "color": "red"},
+          {"name": "Champion", "color": "green"},
+          {"name": "Influencer", "color": "yellow"}
+        ]
+      }
+    }
+  }
+}
+```
+
+## Complete Database Setup Examples
+
+### Contacts Database Schema
+```javascript
+{
+  "properties": {
+    "Name": {"type": "title"},
+    "Company": {
+      "type": "relation",
+      "relation": {
+        "data_source_id": "{companies-db-id}",
+        "type": "single_property"
+      }
+    },
+    "Email": {"type": "email"},
+    "Phone": {"type": "phone_number"},
+    "Title/Role": {"type": "rich_text"},
+    "LinkedIn": {"type": "url"},
+    "Relationship Strength": {
+      "type": "select",
+      "select": {
+        "options": [
+          {"name": "Cold", "color": "gray"},
+          {"name": "Warm", "color": "yellow"},
+          {"name": "Strong", "color": "green"},
+          {"name": "Champion", "color": "blue"}
+        ]
+      }
+    },
+    "Last Contact Date": {"type": "date"},
+    "Next Follow-up": {"type": "date"},
+    "Tags": {
+      "type": "multi_select",
+      "multi_select": {
+        "options": [
+          {"name": "Decision Maker", "color": "purple"},
+          {"name": "Technical", "color": "blue"},
+          {"name": "Executive", "color": "red"},
+          {"name": "Champion", "color": "green"}
+        ]
+      }
+    },
+    "Notes": {"type": "rich_text"}
+  }
+}
+```
+
+### Companies Database Schema
+```javascript
+{
+  "properties": {
+    "Company Name": {"type": "title"},
+    "Industry": {
+      "type": "select",
+      "select": {
+        "options": [
+          {"name": "SaaS", "color": "blue"},
+          {"name": "FinTech", "color": "green"},
+          {"name": "HealthTech", "color": "red"},
+          {"name": "E-commerce", "color": "purple"},
+          {"name": "Enterprise Software", "color": "orange"}
+        ]
+      }
+    },
+    "Size": {
+      "type": "select",
+      "select": {
+        "options": [
+          {"name": "Startup (1-50)", "color": "gray"},
+          {"name": "SMB (51-200)", "color": "yellow"},
+          {"name": "Mid-Market (201-1000)", "color": "green"},
+          {"name": "Enterprise (1000+)", "color": "blue"}
+        ]
+      }
+    },
+    "Website": {"type": "url"},
+    "Status": {
+      "type": "select",
+      "select": {
+        "options": [
+          {"name": "Prospect", "color": "gray"},
+          {"name": "Active", "color": "yellow"},
+          {"name": "Partner", "color": "green"},
+          {"name": "Churned", "color": "red"}
+        ]
+      }
+    },
+    "Partnership Stage": {
+      "type": "select",
+      "select": {
+        "options": [
+          {"name": "Research", "color": "gray"},
+          {"name": "Outreach", "color": "yellow"},
+          {"name": "Discussion", "color": "blue"},
+          {"name": "Negotiation", "color": "orange"},
+          {"name": "Live", "color": "green"}
+        ]
+      }
+    },
+    "Strategic Fit": {"type": "number"},
+    "Revenue Potential": {"type": "number"}
+  }
+}
+```
+
+### Deals Database Schema
+```javascript
+{
+  "properties": {
+    "Deal Name": {"type": "title"},
+    "Company": {
+      "type": "relation",
+      "relation": {
+        "data_source_id": "{companies-db-id}",
+        "type": "single_property"
+      }
+    },
+    "Deal Type": {
+      "type": "select",
+      "select": {
+        "options": [
+          {"name": "Integration", "color": "blue"},
+          {"name": "Reseller", "color": "green"},
+          {"name": "Co-Marketing", "color": "purple"},
+          {"name": "Strategic", "color": "red"}
+        ]
+      }
+    },
+    "Stage": {
+      "type": "select",
+      "select": {
+        "options": [
+          {"name": "Discovery", "color": "gray"},
+          {"name": "Proposal", "color": "yellow"},
+          {"name": "Negotiation", "color": "blue"},
+          {"name": "Legal", "color": "orange"},
+          {"name": "Closed Won", "color": "green"},
+          {"name": "Closed Lost", "color": "red"}
+        ]
+      }
+    },
+    "Value": {"type": "number"},
+    "Probability": {
+      "type": "select",
+      "select": {
+        "options": [
+          {"name": "10%", "color": "gray"},
+          {"name": "25%", "color": "yellow"},
+          {"name": "50%", "color": "blue"},
+          {"name": "75%", "color": "green"},
+          {"name": "90%", "color": "purple"}
+        ]
+      }
+    },
+    "Expected Close Date": {"type": "date"},
+    "Status": {
+      "type": "select",
+      "select": {
+        "options": [
+          {"name": "On Track", "color": "green"},
+          {"name": "At Risk", "color": "yellow"},
+          {"name": "Blocked", "color": "red"},
+          {"name": "Won", "color": "blue"},
+          {"name": "Lost", "color": "gray"}
+        ]
+      }
+    },
+    "Last Activity": {"type": "date"},
+    "Created Date": {"type": "created_time"}
+  }
+}
+```
+
+### Activities Database Schema
+```javascript
+{
+  "properties": {
+    "Activity Title": {"type": "title"},
+    "Type": {
+      "type": "select",
+      "select": {
+        "options": [
+          {"name": "Call", "color": "blue"},
+          {"name": "Email", "color": "green"},
+          {"name": "Meeting", "color": "purple"},
+          {"name": "Event", "color": "orange"},
+          {"name": "Note", "color": "gray"}
+        ]
+      }
+    },
+    "Date": {"type": "date"},
+    "Company": {
+      "type": "relation",
+      "relation": {
+        "data_source_id": "{companies-db-id}",
+        "type": "single_property"
+      }
+    },
+    "Contacts": {
+      "type": "relation",
+      "relation": {
+        "data_source_id": "{contacts-db-id}",
+        "type": "dual_property"
+      }
+    },
+    "Deal": {
+      "type": "relation",
+      "relation": {
+        "data_source_id": "{deals-db-id}",
+        "type": "single_property"
+      }
+    },
+    "Sentiment": {
+      "type": "select",
+      "select": {
+        "options": [
+          {"name": "Very Positive", "color": "green"},
+          {"name": "Positive", "color": "blue"},
+          {"name": "Neutral", "color": "gray"},
+          {"name": "Negative", "color": "red"}
+        ]
+      }
+    }
+  }
+}
+```
+
+## Natural Language to Notion MCP Translation
+
+### How Claude Processes Your Requests
+
+When you say something like:
+
+> "Had a great call with Jennifer at TechFlow. She's interested in our Q2 integration roadmap. Follow up next Tuesday with technical specs."
+
+Claude internally:
+
+1. **Searches for existing records:**
+   ```javascript
+   notion-search({
+     query: "Jennifer TechFlow",
+     query_type: "internal"
+   })
+   ```
+
+2. **Creates or updates contact:**
+   ```javascript
+   notion-update-page({
+     page_id: "jennifer-page-id",
+     command: "update_properties",
+     properties: {
+       "date:Last Contact Date:start": "2025-01-22",
+       "date:Next Follow-up:start": "2025-01-28"
+     }
+   })
+   ```
+
+3. **Logs the activity:**
+   ```javascript
+   notion-create-pages({
+     parent: {data_source_id: "activities-db-id"},
+     pages: [{
+       properties: {
+         "Activity Title": "Call - TechFlow Q2 Integration Discussion",
+         "Type": "Call",
+         "date:Date:start": "2025-01-22",
+         "Sentiment": "Positive"
+       },
+       content: "Discussed Q2 integration roadmap. Jennifer interested. Action: Send technical specs by Tuesday."
+     }]
+   })
+   ```
+
+4. **Creates or updates deal:**
+   ```javascript
+   notion-update-page({
+     page_id: "techflow-deal-id",
+     command: "update_properties",
+     properties: {
+       "Stage": "Discussion",
+       "Status": "On Track"
+     }
+   })
+   ```
+
+## Advanced Patterns
+
+### Pattern 1: Batch Contact Import
+
+```
+"Here's a list of contacts from the conference:
+
+1. Alex Kim, Director of Biz Dev at DataCorp, alex@datacorp.io
+2. Maria Santos, VP Partnerships at CloudBase, maria.santos@cloudbase.com
+3. John Williams, CEO at StartupX, john@startupx.io
+
+Can you add all of these with a tag 'Conference 2025'?"
+```
+
+Claude will loop through and create each contact with the specified tag.
+
+### Pattern 2: Multi-Deal Call Transcript Processing
+
+```
+"Here's the transcript from my call with multiple Fiserv Partners:
+
+[00:00] Discussion with Partner A about Deal 1...
+[15:00] Partner B joined to discuss Deal 2...
+[30:00] Reviewed Deal 3 status with Partner C...
+
+Extract the key points and update each deal individually in the CRM."
+```
+
+Claude will:
+1. **Identify All Entities**:
+   - List all partners/companies mentioned (Partner A, Partner B, Partner C)
+   - List all deals discussed (Deal 1, Deal 2, Deal 3)
+   - Identify all participants and their roles
+
+2. **Search Existing Records**:
+   - Search for each partner/company
+   - Search for each deal by name or company association
+   - Search for each contact person mentioned
+
+3. **Process Each Deal Individually**:
+   - For Deal 1 with Partner A:
+     - Update deal properties (stage, status, probability, etc.)
+     - Add timeline entry to deal page content
+     - Log activity for this specific deal
+   - For Deal 2 with Partner B:
+     - Update deal properties
+     - Add timeline entry
+     - Log activity
+   - For Deal 3 with Partner C:
+     - Update deal properties
+     - Add timeline entry
+     - Log activity
+
+4. **Update Contact Records**:
+   - Update last contact date for all participants
+   - Add notes to each contact's page about their involvement
+   - Update relationship strength if applicable
+
+5. **Summary Activity**:
+   - Create a master activity log entry for the multi-partner call
+   - Link to all deals discussed
+   - Reference all companies and contacts involved
+
+### Multi-Deal Update Example
+When processing a call that covered 3 different Fiserv Partner deals:
+
+```
+# Deal 1: Partner A - Integration Project
+notion-update-page({
+  page_id: "deal-1-id",
+  command: "update_properties",
+  properties: {
+    "Stage": "Technical Review",
+    "Status": "On Track",
+    "date:Last Activity:start": "2025-01-22"
+  }
+})
+
+notion-update-page({
+  page_id: "deal-1-id",
+  command: "insert_content_after",
+  selection_with_ellipsis: "# Deal Timeline...",
+  new_str: "\n**Jan 22, 2025** - Multi-partner call\n- Technical specs approved\n- Next: Security review by end of month"
+})
+
+# Deal 2: Partner B - API Partnership
+notion-update-page({
+  page_id: "deal-2-id",
+  command: "update_properties",
+  properties: {
+    "Stage": "Negotiation",
+    "Status": "At Risk",
+    "date:Last Activity:start": "2025-01-22"
+  }
+})
+
+# Deal 3: Partner C - Data Sharing Agreement
+notion-update-page({
+  page_id: "deal-3-id",
+  command: "update_properties",
+  properties: {
+    "Stage": "Legal Review",
+    "Status": "On Track",
+    "date:Last Activity:start": "2025-01-22"
+  }
+})
+```
+
+### Pattern 2a: Single Call Transcript Processing
+
+```
+"Here's the transcript from my call with Acme Corp:
+
+[00:00] Sarah: Thanks for taking the time today...
+[02:15] Me: So what are your main pain points with...
+[05:30] Sarah: Our biggest challenge is...
+[12:45] Mike (CTO): From a technical perspective...
+[25:00] Sarah: Let's schedule a follow-up for next week...
+
+Extract the key points and update the CRM."
+```
+
+Claude extracts:
+- Participants (Sarah, Mike - CTO)
+- Key challenges discussed
+- Technical requirements
+- Next steps and dates
+- Overall sentiment
+
+### Pattern 3: Deal Pipeline Analysis
+
+```
+"Show me all deals in the pipeline with the following:
+- Stage distribution
+- Average days in each stage
+- Deals at risk (no activity in 14+ days)
+- Top 5 by value
+- Recommendations for what to prioritize this week"
+```
+
+Claude:
+1. Searches all active deals
+2. Analyzes data across multiple dimensions
+3. Generates insights and recommendations
+4. Presents in digestible format
+
+### Pattern 4: Relationship Nurture Queue
+
+```
+"Who should I reach out to this week? Prioritize by:
+- Champions I haven't talked to in 60+ days
+- Warm leads with no follow-up scheduled
+- Active deals needing momentum"
+```
+
+Claude generates a prioritized list with context for each person.
+
+## Deal Timeline
+
+The **Deal Timeline** view provides a chronological summary of important updates and milestones for each deal. This allows you to track the deal's progression at a glance.
+
+### Setting Up Deal Timeline
+
+Create a timeline view grouped by deal stages with the following key events:
+
+1. **Deal Created** - Initial entry point
+2. **First Contact** - When conversation begins
+3. **Demo/Presentation** - Technical or product review
+4. **Proposal Sent** - Official offer submitted
+5. **Negotiation** - Terms being discussed
+6. **Legal Review** - Contract under review
+7. **Close Date** - Target or actual close
+
+### Deal Timeline Activity Log Example
+
+For each deal, maintain activity notes in the page content:
+
+```
 # Deal Timeline
 
 **Jan 22, 2025** - Initial outreach call with Sarah Johnson
@@ -140,27 +752,213 @@ Maintain in deal page content:
 
 **Jan 28, 2025** - Technical demo delivered
 - Attendees: Sarah (Partnerships), Mike (CTO), 2 engineers
-- Feedback: Very positive
-- Action items: Send API docs, pricing proposal
+- Feedback: Very positive on integration approach
+- Action items: Send API documentation, pricing proposal
+
+**Feb 3, 2025** - Proposal submitted
+- Value: $50,000
+- Payment terms: Net 30
+- Expected decision: End of February
+
+**Feb 10, 2025** - Legal review started
+- Minor clause adjustments requested
+- Timeline: 5-7 business days for review
+
+**Feb 15, 2025** - Legal approved, moving to signature
+- Expected close: Feb 18, 2025
 ```
 
----
+This timeline gives you instant context when you return to a deal after time away.
 
-## Key Internal Contacts
+## Database Query Examples
 
-| Name | Role | Email |
-|------|------|-------|
-| Kelly Carthy | SVP, Sales | kcarthy@savanainc.com |
-| Katie Barnes | SVP, Partner Management | kbarnes@savanainc.com |
+### Find Stale Deals
+```javascript
+{
+  "query": "deals with no activity in the last 14 days",
+  "data_source_url": "collection://{deals-database-id}",
+  "filters": {
+    "created_date_range": {
+      "start_date": "2024-01-01"
+    }
+  }
+}
+```
 
----
+### Search for Healthcare Companies
+```javascript
+{
+  "query": "companies in healthcare industry",
+  "data_source_url": "collection://{companies-database-id}"
+}
+```
 
-## Quick Reference: Natural Language → Action
+### Find All Enterprise Prospects
+```javascript
+{
+  "query": "enterprise companies in prospect stage",
+  "data_source_url": "collection://{companies-database-id}"
+}
+```
 
-| Tim says... | Claude does... |
-|-------------|----------------|
-| "Process the [subject] email from [person]" | Full email-to-task workflow |
-| "Remind me to [action] by [time]" | Create task with Source: Manual |
-| "What's on my plate?" | Query Internal Tasks, Status = To Do |
-| "Pipeline summary" | Query Deals, group by Status |
-| *uploads transcript* | Call transcript processing workflow |
+## Formulas for Advanced Properties
+
+Add these formula properties to enhance your databases:
+
+### Contacts Database Formulas
+
+**Days Since Last Contact:**
+```
+dateBetween(now(), prop("Last Contact Date"), "days")
+```
+
+**Is Overdue for Follow-up:**
+```
+if(prop("Next Follow-up") < now(), "Overdue", "Current")
+```
+
+### Deals Database Formulas
+
+**Days in Current Stage:**
+```
+dateBetween(now(), prop("Last Activity"), "days")
+```
+
+**Weighted Value:**
+```
+prop("Value") * toNumber(replaceAll(prop("Probability"), "%", "")) / 100
+```
+
+**Deal Temperature:**
+```
+if(prop("Days in Stage") > 30, "Cool",
+   if(prop("Days in Stage") > 14, "Warm", "Hot"))
+```
+
+## Views to Create
+
+### Contacts Views
+
+1. **Champions to Nurture** - Filter: Relationship Strength = "Champion" AND Last Contact > 60 days ago
+2. **New This Week** - Filter: Created this week, Sort by Created Date
+3. **Follow-up Queue** - Filter: Next Follow-up is today or earlier, Sort by Next Follow-up
+
+### Deals Views
+
+1. **Closing This Quarter** - Filter: Expected Close Date is this quarter, Sort by Value descending
+2. **Hot Pipeline** - Filter: Probability >= 50%, Sort by Expected Close Date
+3. **By Stage** - Group by: Stage, Sort by Value descending
+
+### Activities Views
+
+1. **This Week** - Filter: Date is this week, Sort by Date descending
+2. **By Company** - Group by: Company, Sort by Date descending
+3. **Calls Only** - Filter: Type = "Call", Sort by Date descending
+
+## Setting Up Relations
+
+Relations are critical for connecting your data. Here's how to set them up:
+
+### Companies to Contacts Relation
+
+In the Contacts database:
+```javascript
+"Company": {
+  "type": "relation",
+  "relation": {
+    "data_source_id": "{companies-database-id}",
+    "type": "dual_property",
+    "dual_property": {
+      "synced_property_name": "Contacts"
+    }
+  }
+}
+```
+
+This creates a two-way relation where:
+- Contacts link to Companies
+- Companies automatically show all their Contacts
+
+### Deals to Companies Relation
+
+Similar setup allows you to see all deals associated with each company.
+
+### Activities to Everything Relations
+
+Activities can relate to:
+- Companies (which company was involved)
+- Contacts (who participated)
+- Deals (which opportunity was discussed)
+
+## Quick Start Workflow
+
+### Day 1: Initial Setup
+
+```bash
+# In Claude Code
+> "Help me set up my shadow CRM in Notion. I need databases for
+   Contacts, Companies, Deals, and Activities."
+
+# Claude will guide you through creating each database with proper schema
+```
+
+### Day 2: Import Existing Contacts
+
+```bash
+> "I have 10 key contacts to import. Here's the list..."
+
+# Paste your list and Claude will batch create them
+```
+
+### Day 3: Start Logging Activities
+
+```bash
+> "Just finished a call with..."
+> "Quick note: Sarah mentioned..."
+> "Follow up with Mike about..."
+
+# Claude handles all the CRM updates
+```
+
+### Week 2: Intelligence & Reporting
+
+```bash
+> "Show me my weekly pipeline summary"
+> "What deals need attention?"
+> "Generate my outreach queue for next week"
+
+# Claude becomes your CRM analyst
+```
+
+## Mobile Usage Tips
+
+Since Notion has a mobile app, you can:
+
+1. **Quick voice notes:** Record thoughts and have Claude process them later
+2. **On-the-go updates:** "Just left meeting with X, update the CRM..."
+3. **Pipeline checks:** "Give me my daily briefing" while commuting
+
+## Learning Resources
+
+**Notion Formulas:**
+- https://www.notion.so/help/formulas
+
+**Database Relations:**
+- https://www.notion.so/help/relations-and-rollups
+
+**Views and Filters:**
+- https://www.notion.so/help/views
+
+**Notion API Documentation:**
+- https://developers.notion.com/
+
+## Next Steps
+
+1. Review the main README for vision and strategy
+2. Set up your first database (start with Contacts)
+3. Test the connection with a simple create operation
+4. Import 3-5 contacts to seed your CRM
+5. Log your first activity via Claude
+6. Set up relations between databases
+7. Create your first custom views
+8. Start your daily CRM habit!
